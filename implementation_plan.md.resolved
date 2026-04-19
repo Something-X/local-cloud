@@ -1,0 +1,228 @@
+# Sistem File Cloud Lokal Sekolah
+
+Membangun aplikasi web file manager mirip Nextcloud sederhana untuk jaringan LAN sekolah, menggunakan PHP Native + MariaDB + Tailwind CSS.
+
+## Arsitektur
+
+```mermaid
+graph TB
+    subgraph "Frontend"
+        A["Browser (Guest/Admin)"]
+    end
+    subgraph "Backend - PHP Native"
+        B["index.php (Router)"]
+        C["Auth System"]
+        D["File Manager API"]
+        E["Share System"]
+    end
+    subgraph "Storage"
+        F["MariaDB"]
+        G["uploads/ directory"]
+    end
+    A --> B
+    B --> C
+    B --> D
+    B --> E
+    C --> F
+    D --> F
+    D --> G
+    E --> F
+end
+```
+
+## Proposed Changes
+
+### 1. Database & Config
+
+#### [NEW] [database.php](file:///d:/laragon/www/cloud-local/config/database.php)
+- Koneksi PDO ke MariaDB
+- Database: `cloud_sekolah`
+- Helper function untuk query
+
+#### [NEW] [setup.sql](file:///d:/laragon/www/cloud-local/config/setup.sql)
+- Create database `cloud_sekolah`
+- Tabel `users` (id, username, password, role)
+- Tabel `folders` (id, name, parent_id, created_by, created_at)
+- Tabel `files` (id, name, original_name, path, type, size, folder_id, uploaded_by, created_at)
+- Tabel `shares` (id, file_id, folder_id, token, expires_at, created_at)
+- Insert default admin: `admin` / `admin123`
+
+---
+
+### 2. Auth System
+
+#### [NEW] [login.php](file:///d:/laragon/www/cloud-local/auth/login.php)
+- Form login dengan Tailwind UI (dark theme, modern card)
+- Validasi username/password dengan `password_verify()`
+- Session management
+- Redirect ke admin dashboard setelah login
+
+#### [NEW] [logout.php](file:///d:/laragon/www/cloud-local/auth/logout.php)
+- Destroy session
+- Redirect ke guest page
+
+---
+
+### 3. Admin Panel
+
+#### [NEW] [dashboard.php](file:///d:/laragon/www/cloud-local/admin/dashboard.php)
+- Layout: sidebar + navbar + content area
+- File manager view (grid/list toggle)
+- Breadcrumb navigation
+- Folder navigation (click to enter)
+- Upload button, create folder button
+- File actions: delete, share, download
+- Drag & drop upload zone
+- Session check (redirect jika bukan admin)
+
+#### [NEW] [upload.php](file:///d:/laragon/www/cloud-local/admin/upload.php)
+- Handle POST upload (AJAX)
+- Validasi tipe file: jpg, jpeg, png, gif, mp4, webm, pdf, docx, xlsx, pptx, zip, rar, txt
+- Validasi ukuran: max 100MB
+- Rename file: `time()_rand(1000,9999).ext`
+- Simpan ke `/uploads/`
+- Insert record ke database
+- Return JSON response
+
+#### [NEW] [folder_create.php](file:///d:/laragon/www/cloud-local/admin/folder_create.php)
+- Handle POST create folder (AJAX)
+- Validasi nama folder
+- Support nested folder (parent_id)
+- Return JSON response
+
+#### [NEW] [delete.php](file:///d:/laragon/www/cloud-local/admin/delete.php)
+- Handle POST delete file/folder (AJAX)
+- Delete file dari disk + database
+- Delete folder beserta isi (recursive)
+- Return JSON response
+
+#### [NEW] [share.php](file:///d:/laragon/www/cloud-local/admin/share.php)
+- Generate share token: `bin2hex(random_bytes(16))`
+- Simpan ke tabel shares
+- Return share URL dalam JSON
+
+---
+
+### 4. Guest Area
+
+#### [NEW] [index.php](file:///d:/laragon/www/cloud-local/guest/index.php)
+- Layout sama seperti admin tapi tanpa upload/delete/share buttons
+- File manager view (grid/list)
+- Breadcrumb navigation
+- Folder navigation
+- Preview file (modal/overlay):
+  - Gambar → `<img>`
+  - Video → `<video controls>`
+  - PDF → `<iframe>`
+- Download button untuk setiap file
+
+---
+
+### 5. Share System
+
+#### [NEW] [view.php](file:///d:/laragon/www/cloud-local/share/view.php)
+- Terima `?token=xxxxx`
+- Query database untuk file/folder
+- Preview file sesuai tipe
+- Download button
+- Tampilan standalone (tidak perlu sidebar)
+
+---
+
+### 6. Download Handler
+
+#### [NEW] [download.php](file:///d:/laragon/www/cloud-local/download.php)
+- Handle `?id=xxx`
+- Validasi file exists
+- Force download dengan proper headers
+
+---
+
+### 7. Entry Point
+
+#### [NEW] [index.php](file:///d:/laragon/www/cloud-local/index.php)
+- Redirect ke `guest/index.php` (default untuk semua user)
+- Link ke login admin
+
+---
+
+### 8. Assets & JavaScript
+
+#### [NEW] [app.js](file:///d:/laragon/www/cloud-local/assets/js/app.js)
+- Drag & drop upload handler
+- AJAX upload with progress bar
+- Grid/list toggle
+- File preview modal
+- Create folder modal
+- Delete confirmation
+- Copy share link
+- Breadcrumb dynamic update
+
+---
+
+### 9. UI Design
+
+Modern dark-theme design inspired by Nextcloud:
+
+| Element | Style |
+|---------|-------|
+| Sidebar | Dark (`bg-gray-900`), logo, menu items dengan icons |
+| Navbar | White, search bar, user info |
+| Content | Light gray background, card-based file grid |
+| Cards | White rounded cards, hover shadow, file icon/thumbnail |
+| Modals | Overlay with blur, animated entry |
+| Upload Zone | Dashed border, drag highlight |
+| Buttons | Gradient primary blue, hover transitions |
+
+> [!IMPORTANT]
+> Menggunakan Tailwind CSS via CDN untuk kemudahan setup di lingkungan sekolah tanpa perlu build tools.
+
+---
+
+## Flow Diagram
+
+```mermaid
+flowchart TD
+    A["User akses /cloud-local"] --> B{"Siapa?"}
+    B -->|Guest| C["guest/index.php - Browse files"]
+    B -->|Admin| D["auth/login.php"]
+    D --> E["admin/dashboard.php"]
+    E --> F["Upload file"]
+    E --> G["Buat folder"]
+    E --> H["Delete file/folder"]
+    E --> I["Generate share link"]
+    C --> J["Preview file"]
+    C --> K["Download file"]
+    I --> L["share/view.php?token=xxx"]
+    L --> J
+    L --> K
+```
+
+## Keamanan
+
+- Password hashing: `password_hash()` / `password_verify()`
+- Prepared statements (PDO) untuk semua query
+- File rename untuk mencegah directory traversal
+- Session-based auth untuk admin
+- Validasi tipe & ukuran file
+- Token random untuk share links
+
+## Verification Plan
+
+### Automated Tests
+1. Akses `http://localhost/cloud-local` → redirect ke guest page
+2. Login sebagai admin → masuk dashboard
+3. Upload file → file tersimpan di `/uploads/` dan muncul di dashboard
+4. Buat folder → folder muncul, bisa diklik masuk
+5. Buat nested folder → breadcrumb berfungsi
+6. Preview gambar/video/pdf → modal muncul dengan benar
+7. Generate share link → link bisa diakses tanpa login
+8. Download file → file terdownload
+9. Delete file/folder → terhapus dari disk dan database
+10. Logout → session destroyed, redirect ke guest
+
+### Manual Verification
+- Test di browser untuk memastikan UI responsif dan modern
+- Test upload berbagai tipe file
+- Test navigasi folder nested
+- Verify share link bisa diakses dari komputer lain di LAN
