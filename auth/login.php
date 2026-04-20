@@ -89,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="orb w-80 h-80 bg-purple-500 -bottom-40 -right-40" style="position:fixed;"></div>
     <div class="orb w-64 h-64 bg-cyan-500 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" style="position:fixed;"></div>
 
-    <div class="glass-card rounded-2xl p-8 w-full max-w-md relative z-10">
+    <div class="glass-card rounded-2xl p-6 sm:p-8 w-full max-w-md relative z-10">
         <!-- Logo -->
         <div class="text-center mb-8">
             <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center mx-auto mb-4 float-animation shadow-lg shadow-blue-500/25">
