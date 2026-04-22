@@ -1,6 +1,7 @@
 <?php
 /**
  * Cloud Sekolah - Admin Upload Handler (AJAX)
+ * File disimpan di folder fisik sesuai lokasi, dengan nama asli
  */
 session_start();
 require_once __DIR__ . '/../config/database.php';
@@ -53,22 +54,40 @@ if (empty($ext)) {
     $ext = 'bin';
 }
 
-// Create upload directory if not exists
-if (!is_dir(UPLOAD_DIR)) {
-    mkdir(UPLOAD_DIR, 0755, true);
+// ==========================================
+// VALIDASI KEAMANAN: Cek ekstensi file
+// ==========================================
+if (!in_array($ext, ALLOWED_EXTENSIONS)) {
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Tipe file .' . $ext . ' tidak diizinkan. Ekstensi yang diizinkan: ' . implode(', ', array_map(fn($e) => '.' . $e, ALLOWED_EXTENSIONS))
+    ]);
+    exit;
 }
 
-// Generate unique filename
-$newName = time() . '_' . rand(1000, 9999) . '.' . $ext;
+// Determine target directory (physical folder path)
+$targetDir = getFolderPhysicalPath($folderId);
 
-// Move file
-if (move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $newName)) {
+// Create target directory if not exists
+if (!is_dir($targetDir)) {
+    mkdir($targetDir, 0755, true);
+}
+
+// Generate unique filename (keep original name, add counter if duplicate)
+$finalName = getUniqueFileName($targetDir, $originalName);
+
+// Build relative path from UPLOAD_DIR for database storage
+$folderRelPath = getFolderRelativePath($folderId);
+$relativePath = ($folderRelPath ? $folderRelPath . '/' : '') . $finalName;
+
+// Move file to its physical folder
+if (move_uploaded_file($file['tmp_name'], $targetDir . $finalName)) {
     $db = getDB();
     $stmt = $db->prepare("INSERT INTO files (name, original_name, path, type, size, folder_id, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
-        $newName,
+        $finalName,
         $originalName,
-        $newName,
+        $relativePath,
         $ext,
         $file['size'],
         $folderId,
@@ -80,7 +99,7 @@ if (move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $newName)) {
         'message' => 'File berhasil diupload',
         'file' => [
             'id' => $db->lastInsertId(),
-            'name' => $newName,
+            'name' => $finalName,
             'original_name' => $originalName,
             'type' => $ext,
             'size' => $file['size']

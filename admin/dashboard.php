@@ -12,6 +12,9 @@ if (!isAdmin()) {
     exit;
 }
 
+// Sinkronisasi filesystem <-> database
+syncFilesystem();
+
 $db = getDB();
 $currentFolderId = intval($_GET['folder'] ?? 0) ?: null;
 $breadcrumbs = $currentFolderId ? getBreadcrumbs($currentFolderId) : [];
@@ -290,6 +293,11 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                 <i class="fas fa-list"></i>
                             </button>
                         </div>
+                        <!-- Sync -->
+                        <button onclick="syncFiles()" id="syncBtn" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-sm font-medium transition-colors" title="Sinkronisasi dengan server">
+                            <i class="fas fa-sync-alt" id="syncIcon"></i>
+                            <span class="hidden lg:inline">Sync</span>
+                        </button>
                         <!-- New Folder -->
                         <button onclick="showCreateFolderModal()" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-colors">
                             <i class="fas fa-folder-plus"></i>
@@ -340,162 +348,162 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                         <i class="fas fa-circle-notch fa-spin text-blue-500 text-3xl mb-3 shadow-sm rounded-full"></i>
                         <span class="text-slate-600 font-semibold text-sm">Memuat Data...</span>
                     </div>
-                <!-- Empty State -->
-                <?php if (empty($folders) && empty($files)): ?>
-                    <div class="text-center py-16 sm:py-20">
-                        <div class="w-20 h-20 sm:w-24 sm:h-24 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <i class="fas fa-folder-open text-slate-400 text-2xl sm:text-3xl"></i>
+                    <!-- Empty State -->
+                    <?php if (empty($folders) && empty($files)): ?>
+                        <div class="text-center py-16 sm:py-20">
+                            <div class="w-20 h-20 sm:w-24 sm:h-24 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fas fa-folder-open text-slate-400 text-2xl sm:text-3xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-slate-600 mb-1">Folder kosong</h3>
+                            <p class="text-slate-400 text-sm">Upload file atau buat folder baru untuk memulai</p>
                         </div>
-                        <h3 class="text-lg font-semibold text-slate-600 mb-1">Folder kosong</h3>
-                        <p class="text-slate-400 text-sm">Upload file atau buat folder baru untuk memulai</p>
-                    </div>
-                <?php else: ?>
+                    <?php else: ?>
 
-                    <!-- Grid View -->
-                    <div id="gridView">
-                        <!-- Folders -->
-                        <?php if (!empty($folders)): ?>
-                            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Folder</h3>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
-                                <?php foreach ($folders as $folder): ?>
-                                    <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="window.location='dashboard.php?folder=<?= $folder['id'] ?>'">
-                                        <div class="text-center">
-                                            <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:bg-blue-100 transition-colors">
-                                                <i class="fas fa-folder text-blue-500 text-xl sm:text-2xl"></i>
-                                            </div>
-                                            <p class="text-xs sm:text-sm font-medium text-slate-700 truncate" title="<?= htmlspecialchars($folder['name']) ?>"><?= htmlspecialchars($folder['name']) ?></p>
-                                            <p class="text-xs text-slate-400 mt-1 hidden sm:block"><?= date('d M Y', strtotime($folder['created_at'])) ?></p>
-                                        </div>
-                                        <!-- Context Menu -->
-                                        <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onclick="event.stopPropagation(); showContextMenu(event, 'folder', <?= $folder['id'] ?>, '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
-                                                <i class="fas fa-ellipsis-v text-xs"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <!-- Files -->
-                        <?php if (!empty($files)): ?>
-                            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">File</h3>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                                <?php foreach ($files as $file):
-                                    $category = getFileCategory($file['type']);
-                                    $iconMap = [
-                                        'image' => ['fa-image', 'text-emerald-500', 'bg-emerald-50'],
-                                        'video' => ['fa-play-circle', 'text-purple-500', 'bg-purple-50'],
-                                        'audio' => ['fa-music', 'text-pink-500', 'bg-pink-50'],
-                                        'pdf' => ['fa-file-pdf', 'text-red-500', 'bg-red-50'],
-                                        'document' => ['fa-file-alt', 'text-blue-500', 'bg-blue-50'],
-                                        'archive' => ['fa-file-archive', 'text-amber-500', 'bg-amber-50'],
-                                        'text' => ['fa-file-alt', 'text-slate-500', 'bg-slate-50'],
-                                        'code' => ['fa-file-code', 'text-cyan-500', 'bg-cyan-50'],
-                                        'executable' => ['fa-cog', 'text-orange-500', 'bg-orange-50'],
-                                        'font' => ['fa-font', 'text-indigo-500', 'bg-indigo-50'],
-                                        'design' => ['fa-paint-brush', 'text-fuchsia-500', 'bg-fuchsia-50'],
-                                        'other' => ['fa-file', 'text-slate-500', 'bg-slate-50']
-                                    ];
-                                    $icon = $iconMap[$category] ?? $iconMap['other'];
-                                ?>
-                                    <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= $file['path'] ?>')">
-                                        <div class="text-center">
-                                            <?php if ($category === 'image'): ?>
-                                                <div class="w-full h-20 sm:h-24 rounded-lg mb-2 sm:mb-3 overflow-hidden bg-slate-100">
-                                                    <img src="../uploads/<?= $file['path'] ?>" alt="" class="w-full h-full object-cover">
-                                                </div>
-                                            <?php else: ?>
-                                                <div class="w-12 h-12 sm:w-14 sm:h-14 <?= $icon[2] ?> rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:scale-110 transition-transform">
-                                                    <i class="fas <?= $icon[0] ?> <?= $icon[1] ?> text-xl sm:text-2xl"></i>
-                                                </div>
-                                            <?php endif; ?>
-                                            <p class="text-xs sm:text-sm font-medium text-slate-700 truncate" title="<?= htmlspecialchars($file['original_name']) ?>"><?= htmlspecialchars($file['original_name']) ?></p>
-                                            <p class="text-xs text-slate-400 mt-1"><?= formatFileSize($file['size']) ?></p>
-                                        </div>
-                                        <!-- Context Menu -->
-                                        <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onclick="event.stopPropagation(); showContextMenu(event, 'file', <?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100/80 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
-                                                <i class="fas fa-ellipsis-v text-xs"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- List View -->
-                    <div id="listView" class="hidden">
-                        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
-                            <table class="w-full min-w-[500px]">
-                                <thead>
-                                    <tr class="border-b border-slate-200 bg-slate-50">
-                                        <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama</th>
-                                        <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Ukuran</th>
-                                        <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Tanggal</th>
-                                        <th class="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                        <!-- Grid View -->
+                        <div id="gridView">
+                            <!-- Folders -->
+                            <?php if (!empty($folders)): ?>
+                                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Folder</h3>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
                                     <?php foreach ($folders as $folder): ?>
-                                        <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='dashboard.php?folder=<?= $folder['id'] ?>'">
-                                            <td class="px-4 py-3">
-                                                <div class="flex items-center gap-3">
-                                                    <div class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                        <i class="fas fa-folder text-blue-500"></i>
-                                                    </div>
-                                                    <span class="text-sm font-medium text-slate-700 truncate"><?= htmlspecialchars($folder['name']) ?></span>
+                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="window.location='dashboard.php?folder=<?= $folder['id'] ?>'">
+                                            <div class="text-center">
+                                                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:bg-blue-100 transition-colors">
+                                                    <i class="fas fa-folder text-blue-500 text-xl sm:text-2xl"></i>
                                                 </div>
-                                            </td>
-                                            <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell">—</td>
-                                            <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($folder['created_at'])) ?></td>
-                                            <td class="px-4 py-3 text-right">
-                                                <button onclick="showContextMenu(event, 'folder', <?= $folder['id'] ?>, '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                                                <p class="text-xs sm:text-sm font-medium text-slate-700 truncate" title="<?= htmlspecialchars($folder['name']) ?>"><?= htmlspecialchars($folder['name']) ?></p>
+                                                <p class="text-xs text-slate-400 mt-1 hidden sm:block"><?= date('d M Y', strtotime($folder['created_at'])) ?></p>
+                                            </div>
+                                            <!-- Context Menu -->
+                                            <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'folder', <?= $folder['id'] ?>, '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
                                                     <i class="fas fa-ellipsis-v text-xs"></i>
                                                 </button>
-                                            </td>
-                                        </tr>
+                                            </div>
+                                        </div>
                                     <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <!-- Files -->
+                            <?php if (!empty($files)): ?>
+                                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">File</h3>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
                                     <?php foreach ($files as $file):
                                         $category = getFileCategory($file['type']);
                                         $iconMap = [
                                             'image' => ['fa-image', 'text-emerald-500', 'bg-emerald-50'],
                                             'video' => ['fa-play-circle', 'text-purple-500', 'bg-purple-50'],
+                                            'audio' => ['fa-music', 'text-pink-500', 'bg-pink-50'],
                                             'pdf' => ['fa-file-pdf', 'text-red-500', 'bg-red-50'],
                                             'document' => ['fa-file-alt', 'text-blue-500', 'bg-blue-50'],
                                             'archive' => ['fa-file-archive', 'text-amber-500', 'bg-amber-50'],
                                             'text' => ['fa-file-alt', 'text-slate-500', 'bg-slate-50'],
+                                            'code' => ['fa-file-code', 'text-cyan-500', 'bg-cyan-50'],
+                                            'executable' => ['fa-cog', 'text-orange-500', 'bg-orange-50'],
+                                            'font' => ['fa-font', 'text-indigo-500', 'bg-indigo-50'],
+                                            'design' => ['fa-paint-brush', 'text-fuchsia-500', 'bg-fuchsia-50'],
                                             'other' => ['fa-file', 'text-slate-500', 'bg-slate-50']
                                         ];
                                         $icon = $iconMap[$category] ?? $iconMap['other'];
                                     ?>
-                                        <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= $file['path'] ?>')">
-                                            <td class="px-4 py-3">
-                                                <div class="flex items-center gap-3">
-                                                    <div class="w-9 h-9 <?= $icon[2] ?> rounded-lg flex items-center justify-center flex-shrink-0">
-                                                        <i class="fas <?= $icon[0] ?> <?= $icon[1] ?>"></i>
+                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                            <div class="text-center">
+                                                <?php if ($category === 'image'): ?>
+                                                    <div class="w-full h-20 sm:h-24 rounded-lg mb-2 sm:mb-3 overflow-hidden bg-slate-100">
+                                                        <img src="../uploads/<?= urlEncodePath($file['path']) ?>" alt="" class="w-full h-full object-cover">
                                                     </div>
-                                                    <div class="min-w-0">
-                                                        <span class="text-sm font-medium text-slate-700 block truncate"><?= htmlspecialchars($file['original_name']) ?></span>
-                                                        <span class="text-xs text-slate-400 sm:hidden"><?= formatFileSize($file['size']) ?></span>
+                                                <?php else: ?>
+                                                    <div class="w-12 h-12 sm:w-14 sm:h-14 <?= $icon[2] ?> rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:scale-110 transition-transform">
+                                                        <i class="fas <?= $icon[0] ?> <?= $icon[1] ?> text-xl sm:text-2xl"></i>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell"><?= formatFileSize($file['size']) ?></td>
-                                            <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($file['created_at'])) ?></td>
-                                            <td class="px-4 py-3 text-right">
-                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'file', <?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                                                <?php endif; ?>
+                                                <p class="text-xs sm:text-sm font-medium text-slate-700 truncate" title="<?= htmlspecialchars($file['original_name']) ?>"><?= htmlspecialchars($file['original_name']) ?></p>
+                                                <p class="text-xs text-slate-400 mt-1"><?= formatFileSize($file['size']) ?></p>
+                                            </div>
+                                            <!-- Context Menu -->
+                                            <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'file', <?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100/80 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
                                                     <i class="fas fa-ellipsis-v text-xs"></i>
                                                 </button>
-                                            </td>
-                                        </tr>
+                                            </div>
+                                        </div>
                                     <?php endforeach; ?>
-                                </tbody>
-                            </table>
+                                </div>
+                            <?php endif; ?>
                         </div>
-                    </div>
-                <?php endif; ?>
+
+                        <!-- List View -->
+                        <div id="listView" class="hidden">
+                            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
+                                <table class="w-full min-w-[500px]">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 bg-slate-50">
+                                            <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama</th>
+                                            <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Ukuran</th>
+                                            <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Tanggal</th>
+                                            <th class="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($folders as $folder): ?>
+                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='dashboard.php?folder=<?= $folder['id'] ?>'">
+                                                <td class="px-4 py-3">
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <i class="fas fa-folder text-blue-500"></i>
+                                                        </div>
+                                                        <span class="text-sm font-medium text-slate-700 truncate"><?= htmlspecialchars($folder['name']) ?></span>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell">—</td>
+                                                <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($folder['created_at'])) ?></td>
+                                                <td class="px-4 py-3 text-right">
+                                                    <button onclick="showContextMenu(event, 'folder', <?= $folder['id'] ?>, '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                                                        <i class="fas fa-ellipsis-v text-xs"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        <?php foreach ($files as $file):
+                                            $category = getFileCategory($file['type']);
+                                            $iconMap = [
+                                                'image' => ['fa-image', 'text-emerald-500', 'bg-emerald-50'],
+                                                'video' => ['fa-play-circle', 'text-purple-500', 'bg-purple-50'],
+                                                'pdf' => ['fa-file-pdf', 'text-red-500', 'bg-red-50'],
+                                                'document' => ['fa-file-alt', 'text-blue-500', 'bg-blue-50'],
+                                                'archive' => ['fa-file-archive', 'text-amber-500', 'bg-amber-50'],
+                                                'text' => ['fa-file-alt', 'text-slate-500', 'bg-slate-50'],
+                                                'other' => ['fa-file', 'text-slate-500', 'bg-slate-50']
+                                            ];
+                                            $icon = $iconMap[$category] ?? $iconMap['other'];
+                                        ?>
+                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                                <td class="px-4 py-3">
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="w-9 h-9 <?= $icon[2] ?> rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <i class="fas <?= $icon[0] ?> <?= $icon[1] ?>"></i>
+                                                        </div>
+                                                        <div class="min-w-0">
+                                                            <span class="text-sm font-medium text-slate-700 block truncate"><?= htmlspecialchars($file['original_name']) ?></span>
+                                                            <span class="text-xs text-slate-400 sm:hidden"><?= formatFileSize($file['size']) ?></span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell"><?= formatFileSize($file['size']) ?></td>
+                                                <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($file['created_at'])) ?></td>
+                                                <td class="px-4 py-3 text-right">
+                                                    <button onclick="event.stopPropagation(); showContextMenu(event, 'file', <?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                                                        <i class="fas fa-ellipsis-v text-xs"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>
@@ -793,7 +801,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                         showToast(res.message, 'error');
                     }
                 })
-                .catch(() => showToast('Terjadi kesalahan', 'error'));
+                .catch(() => showToast('Terjadi kesalahan ', 'error'));
         }
 
         // Context Menu
@@ -968,14 +976,38 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
             }
         });
 
+        // Sync button handler
+        function syncFiles() {
+            const icon = document.getElementById('syncIcon');
+            icon.classList.add('fa-spin');
+
+            fetch('sync.php', {
+                    method: 'POST'
+                })
+                .then(r => r.json())
+                .then(res => {
+                    icon.classList.remove('fa-spin');
+                    if (res.success) {
+                        showToast('Sinkronisasi berhasil', 'success');
+                        reloadFiles();
+                    } else {
+                        showToast(res.message || 'Gagal sinkronisasi', 'error');
+                    }
+                })
+                .catch(() => {
+                    icon.classList.remove('fa-spin');
+                    showToast('Gagal sinkronisasi', 'error');
+                });
+        }
+
         // AJAX Reload
         function reloadFiles() {
             const loader = document.getElementById('filesLoader');
-            if(loader) {
+            if (loader) {
                 loader.classList.remove('opacity-0', 'pointer-events-none');
                 loader.classList.add('opacity-100');
             }
-            
+
             fetch(window.location.href)
                 .then(r => r.text())
                 .then(html => {

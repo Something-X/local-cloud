@@ -6,6 +6,9 @@
 session_start();
 require_once __DIR__ . '/../config/database.php';
 
+// Sinkronisasi filesystem <-> database
+syncFilesystem();
+
 $db = getDB();
 $currentFolderId = intval($_GET['folder'] ?? 0) ?: null;
 $breadcrumbs = $currentFolderId ? getBreadcrumbs($currentFolderId) : [];
@@ -215,11 +218,11 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                             ];
                             $icon = $iconMap[$category] ?? $iconMap['other'];
                         ?>
-                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= $file['path'] ?>')">
+                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                             <div class="text-center">
                                 <?php if ($category === 'image'): ?>
                                 <div class="w-full h-20 sm:h-24 rounded-lg mb-2 sm:mb-3 overflow-hidden bg-slate-100">
-                                    <img src="../uploads/<?= $file['path'] ?>" alt="" class="w-full h-full object-cover" loading="lazy">
+                                    <img src="../uploads/<?= urlEncodePath($file['path']) ?>" alt="" class="w-full h-full object-cover" loading="lazy">
                                 </div>
                                 <?php else: ?>
                                 <div class="w-12 h-12 sm:w-14 sm:h-14 <?= $icon[2] ?> rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:scale-110 transition-transform">
@@ -282,7 +285,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                                     ];
                                     $icon = $iconMap[$category] ?? $iconMap['other'];
                                 ?>
-                                <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= $file['path'] ?>')">
+                                <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                                     <td class="px-4 py-3">
                                         <div class="flex items-center gap-3">
                                             <div class="w-9 h-9 <?= $icon[2] ?> rounded-lg flex items-center justify-center flex-shrink-0">

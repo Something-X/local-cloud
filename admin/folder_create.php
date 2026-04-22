@@ -1,6 +1,7 @@
 <?php
 /**
  * Cloud Sekolah - Create Folder Handler (AJAX)
+ * Membuat folder di database DAN folder fisik di server
  */
 session_start();
 require_once __DIR__ . '/../config/database.php';
@@ -25,8 +26,9 @@ if (empty($name)) {
     exit;
 }
 
-// Sanitize folder name
+// Sanitize folder name (hapus karakter berbahaya untuk filesystem)
 $name = preg_replace('/[\/\\\\:*?"<>|]/', '', $name);
+$name = trim($name);
 
 if (empty($name)) {
     echo json_encode(['success' => false, 'message' => 'Nama folder tidak valid']);
@@ -42,11 +44,26 @@ if ($parentId) $params[] = $parentId;
 $stmt->execute($params);
 
 if ($stmt->fetch()) {
-    echo json_encode(['success' => false, 'message' => 'Folder dengan nama ini sudah ada']);
+    echo json_encode(['success' => false, 'message' => 'folder dengan nama yang sama sudah ada']);
     exit;
 }
 
-// Create folder
+// Determine the physical path for the new folder
+$parentPath = getFolderPhysicalPath($parentId);
+$newFolderPath = $parentPath . $name;
+
+// Create physical folder on the server
+if (!is_dir($newFolderPath)) {
+    if (!mkdir($newFolderPath, 0755, true)) {
+        echo json_encode(['success' => false, 'message' => 'Gagal membuat folder di server. Periksa izin akses.']);
+        exit;
+    }
+} else {
+    // Jika folder fisik sudah ada tapi belum ada di database, kita izinkan masuk ke DB, tapi ada baiknya memberi notif
+    // Di sini kita biarkan masuk agar database sinkron
+}
+
+// Create folder record in database
 $stmt = $db->prepare("INSERT INTO folders (name, parent_id, created_by) VALUES (?, ?, ?)");
 $stmt->execute([$name, $parentId, $_SESSION['user_id']]);
 

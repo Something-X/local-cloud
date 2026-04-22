@@ -93,6 +93,15 @@ function formatFileSize($bytes) {
 }
 
 /**
+ * URL-encode a file path (encode each segment, keep slashes)
+ * e.g. "Mata Pelajaran/Soal UTS.pdf" → "Mata%20Pelajaran/Soal%20UTS.pdf"
+ */
+function urlEncodePath($path) {
+    $segments = explode('/', $path);
+    return implode('/', array_map('rawurlencode', $segments));
+}
+
+/**
  * Check if user is logged in as admin
  */
 function isAdmin() {
@@ -142,7 +151,7 @@ function getBreadcrumbs($folderId) {
 }
 
 /**
- * Delete folder recursively
+ * Delete folder recursively (database + physical)
  */
 function deleteFolderRecursive($folderId) {
     $db = getDB();
@@ -178,7 +187,233 @@ function deleteFolderRecursive($folderId) {
     $stmt = $db->prepare("DELETE FROM shares WHERE folder_id = ?");
     $stmt->execute([$folderId]);
     
-    // Delete the folder itself
+    // Delete the physical folder
+    $physicalPath = getFolderPhysicalPath($folderId);
+    if ($physicalPath && is_dir($physicalPath)) {
+        @rmdir($physicalPath); // rmdir hanya menghapus folder kosong, aman
+    }
+    
+    // Delete the folder record from database
     $stmt = $db->prepare("DELETE FROM folders WHERE id = ?");
     $stmt->execute([$folderId]);
+}
+
+/**
+ * Get the physical filesystem path for a folder
+ * Builds the full path by traversing the parent chain
+ * Returns: absolute path like "C:/laragon/www/local-cloud/uploads/Mata Pelajaran/Matematika/"
+ */
+function getFolderPhysicalPath($folderId) {
+    if (!$folderId) return UPLOAD_DIR;
+    
+    $db = getDB();
+    $parts = [];
+    $currentId = $folderId;
+    
+    while ($currentId) {
+        $stmt = $db->prepare("SELECT id, name, parent_id FROM folders WHERE id = ?");
+        $stmt->execute([$currentId]);
+        $folder = $stmt->fetch();
+        
+        if ($folder) {
+            array_unshift($parts, $folder['name']);
+            $currentId = $folder['parent_id'];
+        } else {
+            break;
+        }
+    }
+    
+    if (empty($parts)) return UPLOAD_DIR;
+    
+    return UPLOAD_DIR . implode('/', $parts) . '/';
+}
+
+/**
+ * Get the relative path of a folder (from UPLOAD_DIR)
+ * e.g. "Mata Pelajaran/Matematika"
+ */
+function getFolderRelativePath($folderId) {
+    if (!$folderId) return '';
+    
+    $db = getDB();
+    $parts = [];
+    $currentId = $folderId;
+    
+    while ($currentId) {
+        $stmt = $db->prepare("SELECT id, name, parent_id FROM folders WHERE id = ?");
+        $stmt->execute([$currentId]);
+        $folder = $stmt->fetch();
+        
+        if ($folder) {
+            array_unshift($parts, $folder['name']);
+            $currentId = $folder['parent_id'];
+        } else {
+            break;
+        }
+    }
+    
+    return implode('/', $parts);
+}
+
+/**
+ * Generate a unique filename in a directory
+ * If "Soal UTS.pdf" exists, returns "Soal UTS (2).pdf", etc.
+ */
+function getUniqueFileName($directory, $originalName) {
+    $filePath = $directory . $originalName;
+    
+    if (!file_exists($filePath)) {
+        return $originalName;
+    }
+    
+    $ext = pathinfo($originalName, PATHINFO_EXTENSION);
+    $nameWithoutExt = pathinfo($originalName, PATHINFO_FILENAME);
+    $counter = 2;
+    
+    do {
+        $newName = $nameWithoutExt . ' (' . $counter . ')' . ($ext ? '.' . $ext : '');
+        $filePath = $directory . $newName;
+        $counter++;
+    } while (file_exists($filePath));
+    
+    return $newName;
+}
+
+/**
+ * Sync filesystem with database (two-way)
+ * - Scans uploads/ directory for new folders/files → adds to database
+ * - Removes database records for folders/files that no longer exist on disk
+ * Uses a timestamp cache to avoid scanning on every page load
+ */
+function syncFilesystem($force = false) {
+    // Cache mechanism: only sync if last sync was > 10 seconds ago
+    $cacheFile = UPLOAD_DIR . '.sync_cache';
+    if (!$force && file_exists($cacheFile)) {
+        $lastSync = (int)file_get_contents($cacheFile);
+        if (time() - $lastSync < 10) {
+            return; // Skip sync, data masih fresh
+        }
+    }
+    
+    // Ensure uploads directory exists
+    if (!is_dir(UPLOAD_DIR)) {
+        mkdir(UPLOAD_DIR, 0755, true);
+    }
+    
+    $db = getDB();
+    
+    // ============================
+    // PHASE 1: Filesystem → Database
+    // Scan physical folders/files and add missing records
+    // ============================
+    syncDirectoryToDb($db, UPLOAD_DIR, null);
+    
+    // ============================
+    // PHASE 2: Database → Filesystem
+    // Remove DB records for items that no longer exist physically
+    // ============================
+    
+    // Check folders
+    $stmt = $db->query("SELECT id FROM folders ORDER BY id ASC");
+    $allFolders = $stmt->fetchAll();
+    foreach ($allFolders as $folder) {
+        $physPath = getFolderPhysicalPath($folder['id']);
+        if (!is_dir($physPath)) {
+            // Folder doesn't exist on disk, remove from DB (with children)
+            // But only remove the record, not try to delete physical files again
+            $stmtDel = $db->prepare("DELETE FROM shares WHERE folder_id = ?");
+            $stmtDel->execute([$folder['id']]);
+            $stmtDel = $db->prepare("DELETE FROM shares WHERE file_id IN (SELECT id FROM files WHERE folder_id = ?)");
+            $stmtDel->execute([$folder['id']]);
+            $stmtDel = $db->prepare("DELETE FROM files WHERE folder_id = ?");
+            $stmtDel->execute([$folder['id']]);
+            $stmtDel = $db->prepare("DELETE FROM folders WHERE id = ?");
+            $stmtDel->execute([$folder['id']]);
+        }
+    }
+    
+    // Check files
+    $stmt = $db->query("SELECT id, path FROM files");
+    $allFiles = $stmt->fetchAll();
+    foreach ($allFiles as $file) {
+        $physPath = UPLOAD_DIR . $file['path'];
+        if (!file_exists($physPath)) {
+            $stmtDel = $db->prepare("DELETE FROM shares WHERE file_id = ?");
+            $stmtDel->execute([$file['id']]);
+            $stmtDel = $db->prepare("DELETE FROM files WHERE id = ?");
+            $stmtDel->execute([$file['id']]);
+        }
+    }
+    
+    // Update cache timestamp
+    file_put_contents($cacheFile, time());
+}
+
+/**
+ * Recursively scan a directory and sync its contents to the database
+ */
+function syncDirectoryToDb($db, $directory, $parentFolderId) {
+    $items = @scandir($directory);
+    if ($items === false) return;
+    
+    foreach ($items as $item) {
+        // Skip hidden files/folders and special entries
+        if ($item === '.' || $item === '..' || $item[0] === '.') continue;
+        
+        $fullPath = $directory . $item;
+        
+        if (is_dir($fullPath)) {
+            // Check if this folder exists in DB
+            $stmt = $db->prepare(
+                "SELECT id FROM folders WHERE name = ? AND parent_id " . ($parentFolderId ? "= ?" : "IS NULL")
+            );
+            $params = [$item];
+            if ($parentFolderId) $params[] = $parentFolderId;
+            $stmt->execute($params);
+            $existing = $stmt->fetch();
+            
+            if ($existing) {
+                $folderId = $existing['id'];
+            } else {
+                // Create folder record in DB
+                $stmt = $db->prepare("INSERT INTO folders (name, parent_id, created_by) VALUES (?, ?, NULL)");
+                $stmt->execute([$item, $parentFolderId]);
+                $folderId = $db->lastInsertId();
+            }
+            
+            // Recurse into subdirectory
+            syncDirectoryToDb($db, $fullPath . '/', $folderId);
+            
+        } else if (is_file($fullPath)) {
+            // Build relative path from UPLOAD_DIR
+            $relativePath = str_replace(
+                str_replace('\\', '/', UPLOAD_DIR),
+                '',
+                str_replace('\\', '/', $fullPath)
+            );
+            
+            // Check if this file exists in DB by its relative path
+            $stmt = $db->prepare("SELECT id FROM files WHERE path = ?");
+            $stmt->execute([$relativePath]);
+            $existing = $stmt->fetch();
+            
+            if (!$existing) {
+                // Register file in DB
+                $ext = strtolower(pathinfo($item, PATHINFO_EXTENSION));
+                if (empty($ext)) $ext = 'bin';
+                
+                $stmt = $db->prepare(
+                    "INSERT INTO files (name, original_name, path, type, size, folder_id, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, NULL)"
+                );
+                $stmt->execute([
+                    $item,
+                    $item,
+                    $relativePath,
+                    $ext,
+                    filesize($fullPath),
+                    $parentFolderId
+                ]);
+            }
+        }
+    }
 }

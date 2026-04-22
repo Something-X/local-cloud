@@ -133,14 +133,14 @@ if (empty($token)) {
 
             <div class="bg-slate-50 rounded-xl p-2 sm:p-4 flex items-center justify-center min-h-[150px] sm:min-h-[200px]">
                 <?php if ($category === 'image'): ?>
-                <img src="../uploads/<?= $share['path'] ?>" alt="" class="max-w-full max-h-[60vh] rounded-lg shadow-sm">
+                <img src="../uploads/<?= urlEncodePath($share['path']) ?>" alt="" class="max-w-full max-h-[60vh] rounded-lg shadow-sm">
                 <?php elseif ($category === 'video'): ?>
                 <video controls class="max-w-full max-h-[60vh] rounded-lg shadow-sm">
-                    <source src="../uploads/<?= $share['path'] ?>" type="video/<?= $share['type'] ?>">
+                    <source src="../uploads/<?= urlEncodePath($share['path']) ?>" type="video/<?= $share['type'] ?>">
                     Browser Anda tidak mendukung video.
                 </video>
                 <?php elseif ($category === 'pdf'): ?>
-                <iframe src="../uploads/<?= $share['path'] ?>" class="w-full h-[50vh] sm:h-[60vh] rounded-lg border border-slate-200"></iframe>
+                <iframe src="../uploads/<?= urlEncodePath($share['path']) ?>" class="w-full h-[50vh] sm:h-[60vh] rounded-lg border border-slate-200"></iframe>
                 <?php else: ?>
                 <div class="text-center py-6 sm:py-8">
                     <div class="w-12 h-12 sm:w-16 sm:h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3">
@@ -224,7 +224,7 @@ if (empty($token)) {
                     <div class="text-center">
                         <?php if ($category === 'image'): ?>
                         <div class="w-full h-16 sm:h-20 rounded-lg mb-2 overflow-hidden bg-slate-100">
-                            <img src="../uploads/<?= $file['path'] ?>" alt="" class="w-full h-full object-cover" loading="lazy">
+                            <img src="../uploads/<?= urlEncodePath($file['path']) ?>" alt="" class="w-full h-full object-cover" loading="lazy">
                         </div>
                         <?php else: ?>
                         <div class="w-10 h-10 sm:w-12 sm:h-12 <?= $icon[2] ?> rounded-xl flex items-center justify-center mx-auto mb-2">
