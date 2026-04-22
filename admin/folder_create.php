@@ -19,7 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $name = trim($_POST['name'] ?? '');
-$parentId = intval($_POST['parent_id'] ?? 0) ?: null;
+$parentIdParam = $_POST['parent_id'] ?? '';
+$parentId = $parentIdParam ? decodeId($parentIdParam) : null;
 
 if (empty($name)) {
     echo json_encode(['success' => false, 'message' => 'Nama folder harus diisi']);
@@ -71,7 +72,7 @@ echo json_encode([
     'success' => true,
     'message' => 'Folder berhasil dibuat',
     'folder' => [
-        'id' => $db->lastInsertId(),
+        'id' => encodeId($db->lastInsertId()),
         'name' => $name,
         'parent_id' => $parentId
     ]

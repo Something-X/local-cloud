@@ -10,7 +10,13 @@ require_once __DIR__ . '/../config/database.php';
 syncFilesystem();
 
 $db = getDB();
-$currentFolderId = intval($_GET['folder'] ?? 0) ?: null;
+$folderIdParam = $_GET['folder'] ?? '';
+$currentFolderId = $folderIdParam ? decodeId($folderIdParam) : null;
+
+if ($folderIdParam && $currentFolderId === null) {
+    header('Location: index.php');
+    exit;
+}
 $breadcrumbs = $currentFolderId ? getBreadcrumbs($currentFolderId) : [];
 
 // Get folders in current directory
@@ -148,11 +154,13 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                             <i class="fas fa-home"></i>
                             <span class="hidden sm:inline">Home</span>
                         </a>
-                        <?php foreach ($breadcrumbs as $bc): ?>
-                        <i class="fas fa-chevron-right text-slate-300 text-xs flex-shrink-0"></i>
-                        <a href="index.php?folder=<?= $bc['id'] ?>" class="text-slate-500 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-none">
-                            <?= htmlspecialchars($bc['name']) ?>
-                        </a>
+                        <?php foreach ($breadcrumbs as $i => $crumb): ?>
+                            <i class="fas fa-chevron-right text-slate-300 text-xs flex-shrink-0 mx-2 sm:mx-3"></i>
+                            <?php if ($i === array_key_last($breadcrumbs)): ?>
+                                <span class="text-blue-600 font-medium truncate max-w-[150px] sm:max-w-none"><?= htmlspecialchars($crumb['name']) ?></span>
+                            <?php else: ?>
+                                <a href="?folder=<?= encodeId($crumb['id']) ?>" class="text-slate-500 hover:text-blue-600 font-medium transition-colors truncate max-w-[100px] sm:max-w-none"><?= htmlspecialchars($crumb['name']) ?></a>
+                            <?php endif; ?>
                         <?php endforeach; ?>
                     </nav>
                 </div>
@@ -184,7 +192,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                     <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Folder</h3>
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
                         <?php foreach ($folders as $folder): ?>
-                        <a href="index.php?folder=<?= $folder['id'] ?>" class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 block group">
+                        <a href="index.php?folder=<?= encodeId($folder['id']) ?>" class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 block group">
                             <div class="text-center">
                                 <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:bg-blue-100 transition-colors">
                                     <i class="fas fa-folder text-blue-500 text-xl sm:text-2xl"></i>
@@ -218,7 +226,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                             ];
                             $icon = $iconMap[$category] ?? $iconMap['other'];
                         ?>
-                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                             <div class="text-center">
                                 <?php if ($category === 'image'): ?>
                                 <div class="w-full h-20 sm:h-24 rounded-lg mb-2 sm:mb-3 overflow-hidden bg-slate-100">
@@ -233,7 +241,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                                 <p class="text-xs text-slate-400 mt-1"><?= formatFileSize($file['size']) ?></p>
                             </div>
                             <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <a href="../download.php?id=<?= $file['id'] ?>" onclick="event.stopPropagation();" class="w-8 h-8 bg-blue-500/80 hover:bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg backdrop-blur-sm" title="Download">
+                                <a href="../download.php?id=<?= encodeId($file['id']) ?>" onclick="event.stopPropagation();" class="w-8 h-8 bg-blue-500/80 hover:bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg backdrop-blur-sm" title="Download">
                                     <i class="fas fa-download text-xs"></i>
                                 </a>
                             </div>
@@ -256,7 +264,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                             </thead>
                             <tbody>
                                 <?php foreach ($folders as $folder): ?>
-                                <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='index.php?folder=<?= $folder['id'] ?>'">
+                                <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='index.php?folder=<?= encodeId($folder['id']) ?>'">
                                     <td class="px-4 py-3">
                                         <div class="flex items-center gap-3">
                                             <div class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -285,7 +293,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                                     ];
                                     $icon = $iconMap[$category] ?? $iconMap['other'];
                                 ?>
-                                <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                                     <td class="px-4 py-3">
                                         <div class="flex items-center gap-3">
                                             <div class="w-9 h-9 <?= $icon[2] ?> rounded-lg flex items-center justify-center flex-shrink-0">
@@ -300,7 +308,7 @@ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'admin';
                                     <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell"><?= formatFileSize($file['size']) ?></td>
                                     <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($file['created_at'])) ?></td>
                                     <td class="px-4 py-3 text-right">
-                                        <a href="../download.php?id=<?= $file['id'] ?>" onclick="event.stopPropagation();" class="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 text-sm font-medium transition-colors p-2 hover:bg-blue-50 rounded-lg">
+                                        <a href="../download.php?id=<?= encodeId($file['id']) ?>" onclick="event.stopPropagation();" class="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 text-sm font-medium transition-colors p-2 hover:bg-blue-50 rounded-lg">
                                             <i class="fas fa-download text-xs"></i> <span class="hidden sm:inline">Download</span>
                                         </a>
                                     </td>

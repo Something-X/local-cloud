@@ -15,7 +15,8 @@ while (ob_get_level()) {
 
 require_once __DIR__ . '/config/database.php';
 
-$fileId = intval($_GET['id'] ?? 0);
+$idParam = $_GET['id'] ?? '';
+$fileId = $idParam ? decodeId($idParam) : 0;
 
 if (!$fileId) {
     http_response_code(400);

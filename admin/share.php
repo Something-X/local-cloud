@@ -18,7 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $type = $_POST['type'] ?? 'file';
-$id = intval($_POST['id'] ?? 0);
+$idParam = $_POST['id'] ?? '';
+$id = $idParam ? decodeId($idParam) : 0;
 
 if (!$id) {
     echo json_encode(['success' => false, 'message' => 'ID tidak valid']);

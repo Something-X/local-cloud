@@ -10,6 +10,9 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
+// Hardcoded Application Key for consistent encryption across team environments
+define('APP_KEY', 'CloudSekolah_TeamDev_SecretKey2026!');
+
 // Base URL - sesuaikan dengan IP server sekolah
 define('BASE_URL', '/cloud-local');
 
@@ -99,6 +102,34 @@ function formatFileSize($bytes) {
 function urlEncodePath($path) {
     $segments = explode('/', $path);
     return implode('/', array_map('rawurlencode', $segments));
+}
+
+/**
+ * Encrypt an ID
+ * Digunakan untuk menyembunyikan ID urut dari user di Frontend.
+ */
+function encodeId($id) {
+    if (!$id) return null;
+    $iv = substr(hash('sha256', APP_KEY), 0, 16);
+    $encrypted = openssl_encrypt((string)$id, 'AES-256-CBC', APP_KEY, 0, $iv);
+    return str_replace(['+', '/', '='], ['-', '_', ''], $encrypted);
+}
+
+/**
+ * Decrypt an ID
+ * Menerjemahkan kembali ID yang diterima dari parameter (GET/POST) ke Integer di backend.
+ */
+function decodeId($hash) {
+    if (!$hash) return null;
+    $hashWithEquals = str_replace(['-', '_'], ['+', '/'], $hash);
+    $pad = strlen($hashWithEquals) % 4;
+    if ($pad) {
+        $hashWithEquals .= str_repeat('=', 4 - $pad);
+    }
+    
+    $iv = substr(hash('sha256', APP_KEY), 0, 16);
+    $decrypted = openssl_decrypt($hashWithEquals, 'AES-256-CBC', APP_KEY, 0, $iv);
+    return is_numeric($decrypted) ? (int)$decrypted : null;
 }
 
 /**

@@ -16,7 +16,13 @@ if (!isAdmin()) {
 syncFilesystem();
 
 $db = getDB();
-$currentFolderId = intval($_GET['folder'] ?? 0) ?: null;
+$folderIdParam = $_GET['folder'] ?? '';
+$currentFolderId = $folderIdParam ? decodeId($folderIdParam) : null;
+
+if ($folderIdParam && $currentFolderId === null) {
+    header('Location: dashboard.php');
+    exit;
+}
 $breadcrumbs = $currentFolderId ? getBreadcrumbs($currentFolderId) : [];
 
 // Get folders in current directory
@@ -275,10 +281,10 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                 <i class="fas fa-home"></i>
                                 <span class="hidden sm:inline">Home</span>
                             </a>
-                            <?php foreach ($breadcrumbs as $bc): ?>
+                            <?php foreach ($breadcrumbs as $i => $crumb): ?>
                                 <i class="fas fa-chevron-right text-slate-300 text-xs flex-shrink-0"></i>
-                                <a href="dashboard.php?folder=<?= $bc['id'] ?>" class="text-slate-500 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-none">
-                                    <?= htmlspecialchars($bc['name']) ?>
+                                <a href="dashboard.php?folder=<?= encodeId($crumb['id']) ?>" class="text-slate-500 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-none">
+                                    <?= htmlspecialchars($crumb['name']) ?>
                                 </a>
                             <?php endforeach; ?>
                         </nav>
@@ -366,7 +372,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                 <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Folder</h3>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
                                     <?php foreach ($folders as $folder): ?>
-                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="window.location='dashboard.php?folder=<?= $folder['id'] ?>'">
+                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="window.location='dashboard.php?folder=<?= encodeId($folder['id']) ?>'">
                                             <div class="text-center">
                                                 <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:bg-blue-100 transition-colors">
                                                     <i class="fas fa-folder text-blue-500 text-xl sm:text-2xl"></i>
@@ -376,7 +382,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                             </div>
                                             <!-- Context Menu -->
                                             <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'folder', <?= $folder['id'] ?>, '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
+                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'folder', '<?= encodeId($folder['id']) ?>', '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
                                                     <i class="fas fa-ellipsis-v text-xs"></i>
                                                 </button>
                                             </div>
@@ -407,7 +413,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                         ];
                                         $icon = $iconMap[$category] ?? $iconMap['other'];
                                     ?>
-                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                                             <div class="text-center">
                                                 <?php if ($category === 'image'): ?>
                                                     <div class="w-full h-20 sm:h-24 rounded-lg mb-2 sm:mb-3 overflow-hidden bg-slate-100">
@@ -423,7 +429,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                             </div>
                                             <!-- Context Menu -->
                                             <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'file', <?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100/80 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
+                                                <button onclick="event.stopPropagation(); showContextMenu(event, 'file', '<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 bg-slate-100/80 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-500">
                                                     <i class="fas fa-ellipsis-v text-xs"></i>
                                                 </button>
                                             </div>
@@ -447,7 +453,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                     </thead>
                                     <tbody>
                                         <?php foreach ($folders as $folder): ?>
-                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='dashboard.php?folder=<?= $folder['id'] ?>'">
+                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='dashboard.php?folder=<?= encodeId($folder['id']) ?>'">
                                                 <td class="px-4 py-3">
                                                     <div class="flex items-center gap-3">
                                                         <div class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -459,7 +465,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                                 <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell">—</td>
                                                 <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($folder['created_at'])) ?></td>
                                                 <td class="px-4 py-3 text-right">
-                                                    <button onclick="showContextMenu(event, 'folder', <?= $folder['id'] ?>, '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                                                    <button onclick="event.stopPropagation(); showContextMenu(event, 'folder', '<?= encodeId($folder['id']) ?>', '<?= htmlspecialchars($folder['name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
                                                         <i class="fas fa-ellipsis-v text-xs"></i>
                                                     </button>
                                                 </td>
@@ -478,7 +484,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                             ];
                                             $icon = $iconMap[$category] ?? $iconMap['other'];
                                         ?>
-                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile(<?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                                                 <td class="px-4 py-3">
                                                     <div class="flex items-center gap-3">
                                                         <div class="w-9 h-9 <?= $icon[2] ?> rounded-lg flex items-center justify-center flex-shrink-0">
@@ -493,7 +499,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                                 <td class="px-4 py-3 text-sm text-slate-400 hidden sm:table-cell"><?= formatFileSize($file['size']) ?></td>
                                                 <td class="px-4 py-3 text-sm text-slate-400 hidden md:table-cell"><?= date('d M Y H:i', strtotime($file['created_at'])) ?></td>
                                                 <td class="px-4 py-3 text-right">
-                                                    <button onclick="event.stopPropagation(); showContextMenu(event, 'file', <?= $file['id'] ?>, '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                                                    <button onclick="event.stopPropagation(); showContextMenu(event, 'file', '<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>')" class="w-8 h-8 hover:bg-slate-100 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
                                                         <i class="fas fa-ellipsis-v text-xs"></i>
                                                     </button>
                                                 </td>
@@ -588,7 +594,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
 
     <script>
         const BASE_URL = '<?= BASE_URL ?>';
-        const currentFolderId = <?= $currentFolderId ?? 'null' ?>;
+        let currentFolderId = '<?= $currentFolderId ? encodeId($currentFolderId) : '' ?>';
         let currentView = localStorage.getItem('viewMode') || 'grid';
         let ctxType = '',
             ctxId = 0,

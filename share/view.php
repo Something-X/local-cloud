@@ -27,7 +27,8 @@ if (empty($token)) {
         
         // If sharing a folder, get its contents
         if ($share['shared_folder_id']) {
-            $browseFolderId = intval($_GET['subfolder'] ?? 0) ?: $share['shared_folder_id'];
+            $subfolderParam = $_GET['subfolder'] ?? '';
+            $browseFolderId = $subfolderParam ? decodeId($subfolderParam) : $share['shared_folder_id'];
             
             $stmt = $db->prepare("SELECT * FROM folders WHERE parent_id = ? ORDER BY name ASC");
             $stmt->execute([$browseFolderId]);
@@ -180,7 +181,7 @@ if (empty($token)) {
                     if (!$showBreadcrumbs) continue;
                 ?>
                 <i class="fas fa-chevron-right text-slate-300 text-[10px] sm:text-xs flex-shrink-0"></i>
-                <a href="view.php?token=<?= $token ?>&subfolder=<?= $bc['id'] ?>" class="text-slate-500 hover:text-blue-600 truncate max-w-[80px] sm:max-w-none">
+                <a href="view.php?token=<?= $token ?>&subfolder=<?= encodeId($bc['id']) ?>" class="text-slate-500 hover:text-blue-600 font-medium transition-colors truncate max-w-[100px] sm:max-w-none">
                     <?= htmlspecialchars($bc['name']) ?>
                 </a>
                 <?php endforeach; ?>
@@ -198,7 +199,7 @@ if (empty($token)) {
             <?php else: ?>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 <?php foreach ($folders as $folder): ?>
-                <a href="view.php?token=<?= $token ?>&subfolder=<?= $folder['id'] ?>" class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 block">
+                <a href="view.php?token=<?= $token ?>&subfolder=<?= encodeId($folder['id']) ?>" class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 block group">
                     <div class="text-center">
                         <div class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
                             <i class="fas fa-folder text-blue-500 text-lg sm:text-xl"></i>
@@ -235,7 +236,7 @@ if (empty($token)) {
                         <p class="text-[10px] sm:text-xs text-slate-400 mt-1"><?= formatFileSize($file['size']) ?></p>
                     </div>
                     <div class="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                        <a href="../download.php?id=<?= $file['id'] ?>" class="w-7 h-7 sm:w-8 sm:h-8 bg-blue-500/80 hover:bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg backdrop-blur-sm" title="Download">
+                        <a href="../download.php?id=<?= encodeId($file['id']) ?>" class="w-8 h-8 bg-blue-500/80 hover:bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg backdrop-blur-sm" title="Download">
                             <i class="fas fa-download text-[10px] sm:text-xs"></i>
                         </a>
                     </div>

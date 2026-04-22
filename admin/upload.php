@@ -23,7 +23,8 @@ if (!isset($_FILES['file'])) {
     exit;
 }
 
-$folderId = intval($_POST['folder_id'] ?? 0) ?: null;
+$folderIdParam = $_POST['folder_id'] ?? '';
+$folderId = $folderIdParam ? decodeId($folderIdParam) : null;
 $file = $_FILES['file'];
 
 // Check for upload errors
@@ -98,7 +99,7 @@ if (move_uploaded_file($file['tmp_name'], $targetDir . $finalName)) {
         'success' => true,
         'message' => 'File berhasil diupload',
         'file' => [
-            'id' => $db->lastInsertId(),
+            'id' => encodeId($db->lastInsertId()),
             'name' => $finalName,
             'original_name' => $originalName,
             'type' => $ext,
