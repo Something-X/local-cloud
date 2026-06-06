@@ -29,7 +29,7 @@ define('ALLOWED_EXTENSIONS', [
     'pdf',
     'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
     'zip', 'rar', '7z',
-    'txt', 'csv'
+    'txt', 'csv', 'exe'
 ]);
 
 // File type categories
@@ -221,7 +221,7 @@ function deleteFolderRecursive($folderId) {
     // Delete the physical folder
     $physicalPath = getFolderPhysicalPath($folderId);
     if ($physicalPath && is_dir($physicalPath)) {
-        @rmdir($physicalPath); // rmdir hanya menghapus folder kosong, aman
+        deleteDirectory($physicalPath);
     }
     
     // Delete the folder record from database
@@ -447,4 +447,20 @@ function syncDirectoryToDb($db, $directory, $parentFolderId) {
             }
         }
     }
+}
+
+/**
+ * Delete a physical directory and all its contents recursively
+ */
+function deleteDirectory($dir) {
+    if (!is_dir($dir)) {
+        return false;
+    }
+    
+    $files = array_diff(scandir($dir), array('.','..'));
+    foreach ($files as $file) {
+        $path = $dir . '/' . $file;
+        is_dir($path) ? deleteDirectory($path) : unlink($path);
+    }
+    return rmdir($dir);
 }

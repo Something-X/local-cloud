@@ -25,15 +25,30 @@ if ($folderIdParam && $currentFolderId === null) {
 }
 $breadcrumbs = $currentFolderId ? getBreadcrumbs($currentFolderId) : [];
 
-// Get folders in current directory
-$stmt = $db->prepare("SELECT * FROM folders WHERE parent_id " . ($currentFolderId ? "= ?" : "IS NULL") . " ORDER BY name ASC");
-$stmt->execute($currentFolderId ? [$currentFolderId] : []);
-$folders = $stmt->fetchAll();
+$searchQuery = $_GET['q'] ?? '';
 
-// Get files in current directory
-$stmt = $db->prepare("SELECT f.*, u.username as uploader FROM files f LEFT JOIN users u ON f.uploaded_by = u.id WHERE f.folder_id " . ($currentFolderId ? "= ?" : "IS NULL") . " ORDER BY f.created_at DESC");
-$stmt->execute($currentFolderId ? [$currentFolderId] : []);
-$files = $stmt->fetchAll();
+if ($searchQuery !== '') {
+    $searchParam = '%' . $searchQuery . '%';
+    // Search all folders
+    $stmt = $db->prepare("SELECT * FROM folders WHERE name LIKE ? ORDER BY name ASC");
+    $stmt->execute([$searchParam]);
+    $folders = $stmt->fetchAll();
+
+    // Search all files
+    $stmt = $db->prepare("SELECT f.*, u.username as uploader FROM files f LEFT JOIN users u ON f.uploaded_by = u.id WHERE f.name LIKE ? OR f.original_name LIKE ? ORDER BY f.created_at DESC");
+    $stmt->execute([$searchParam, $searchParam]);
+    $files = $stmt->fetchAll();
+} else {
+    // Get folders in current directory
+    $stmt = $db->prepare("SELECT * FROM folders WHERE parent_id " . ($currentFolderId ? "= ?" : "IS NULL") . " ORDER BY name ASC");
+    $stmt->execute($currentFolderId ? [$currentFolderId] : []);
+    $folders = $stmt->fetchAll();
+
+    // Get files in current directory
+    $stmt = $db->prepare("SELECT f.*, u.username as uploader FROM files f LEFT JOIN users u ON f.uploaded_by = u.id WHERE f.folder_id " . ($currentFolderId ? "= ?" : "IS NULL") . " ORDER BY f.created_at DESC");
+    $stmt->execute($currentFolderId ? [$currentFolderId] : []);
+    $files = $stmt->fetchAll();
+}
 
 // Stats
 $totalFiles = $db->query("SELECT COUNT(*) FROM files")->fetchColumn();
@@ -220,7 +235,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
 
             <!-- Menu -->
             <nav class="flex-1 p-3 space-y-1">
-                <a href="dashboard.php" class="sidebar-link active flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium">
+                <a href="dashboard.php" onclick="event.preventDefault(); navigateTo('dashboard.php')" class="sidebar-link active flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium">
                     <i class="fas fa-folder-open w-5 text-center"></i>
                     <span>File Manager</span>
                 </a>
@@ -268,28 +283,41 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
         <!-- Main Content -->
         <main class="flex-1 flex flex-col overflow-hidden">
             <!-- Top Bar -->
-            <header class="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0">
-                <div class="flex items-center justify-between gap-3">
+            <header class="bg-white border-b border-slate-200 flex-shrink-0">
+                <div class="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3 min-w-0">
                         <!-- Hamburger Menu -->
                         <button onclick="toggleSidebar()" class="md:hidden w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-600 flex-shrink-0 transition-colors">
                             <i class="fas fa-bars"></i>
                         </button>
                         <!-- Breadcrumb -->
-                        <nav class="flex items-center gap-1 sm:gap-2 text-sm min-w-0 overflow-x-auto">
-                            <a href="dashboard.php" class="text-slate-500 hover:text-blue-600 transition-colors flex items-center gap-1 flex-shrink-0">
+                        <nav id="breadcrumbNav" class="flex items-center gap-1 sm:gap-2 text-sm min-w-0 overflow-x-auto">
+                            <a href="dashboard.php" onclick="event.preventDefault(); navigateTo('dashboard.php')" class="text-slate-500 hover:text-blue-600 transition-colors flex items-center gap-1 flex-shrink-0">
                                 <i class="fas fa-home"></i>
                                 <span class="hidden sm:inline">Home</span>
                             </a>
-                            <?php foreach ($breadcrumbs as $i => $crumb): ?>
+                            <?php if ($searchQuery !== ''): ?>
                                 <i class="fas fa-chevron-right text-slate-300 text-xs flex-shrink-0"></i>
-                                <a href="dashboard.php?folder=<?= encodeId($crumb['id']) ?>" class="text-slate-500 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-none">
-                                    <?= htmlspecialchars($crumb['name']) ?>
-                                </a>
-                            <?php endforeach; ?>
+                                <span class="text-slate-700 font-medium truncate">Pencarian: "<?= htmlspecialchars($searchQuery) ?>"</span>
+                            <?php else: ?>
+                                <?php foreach ($breadcrumbs as $i => $crumb): ?>
+                                    <i class="fas fa-chevron-right text-slate-300 text-xs flex-shrink-0"></i>
+                                    <a href="dashboard.php?folder=<?= encodeId($crumb['id']) ?>" onclick="event.preventDefault(); navigateTo(this.href)" class="text-slate-500 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-none">
+                                        <?= htmlspecialchars($crumb['name']) ?>
+                                    </a>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </nav>
                     </div>
                     <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                        <!-- Search Bar -->
+                        <form action="dashboard.php" method="GET" class="relative hidden md:block" onsubmit="event.preventDefault(); navigateTo('dashboard.php?' + new URLSearchParams(new FormData(this)).toString())">
+                            <?php if ($currentFolderId && $searchQuery === ''): ?>
+                                <input type="hidden" name="folder" value="<?= encodeId($currentFolderId) ?>">
+                            <?php endif; ?>
+                            <input type="text" name="q" placeholder="Cari file/folder..." value="<?= htmlspecialchars($searchQuery) ?>" class="pl-10 pr-4 py-2 w-48 lg:w-64 bg-slate-100 border-none rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        </form>
                         <!-- View Toggle -->
                         <div class="flex bg-slate-100 rounded-lg p-1">
                             <button onclick="setView('grid')" id="gridBtn" class="px-2.5 sm:px-3 py-1.5 rounded-md text-sm font-medium transition-all bg-white shadow text-blue-600">
@@ -316,6 +344,16 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                         </button>
                         <input type="file" id="fileInput" multiple class="hidden" onchange="handleFileSelect(this.files)">
                     </div>
+                </div>
+                <!-- Mobile Search Bar -->
+                <div class="px-4 pb-3 md:hidden">
+                    <form action="dashboard.php" method="GET" class="relative w-full" onsubmit="event.preventDefault(); navigateTo('dashboard.php?' + new URLSearchParams(new FormData(this)).toString())">
+                        <?php if ($currentFolderId && $searchQuery === ''): ?>
+                            <input type="hidden" name="folder" value="<?= encodeId($currentFolderId) ?>">
+                        <?php endif; ?>
+                        <input type="text" name="q" placeholder="Cari file/folder..." value="<?= htmlspecialchars($searchQuery) ?>" class="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                        <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    </form>
                 </div>
             </header>
 
@@ -372,7 +410,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                 <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Folder</h3>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
                                     <?php foreach ($folders as $folder): ?>
-                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="window.location='dashboard.php?folder=<?= encodeId($folder['id']) ?>'">
+                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="navigateTo('dashboard.php?folder=<?= encodeId($folder['id']) ?>')" ondragover="event.preventDefault(); this.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50')" ondragleave="this.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50')" ondrop="event.preventDefault(); this.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50'); handleFileDrop(event, '<?= encodeId($folder['id']) ?>')">
                                             <div class="text-center">
                                                 <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2 sm:mb-3 group-hover:bg-blue-100 transition-colors">
                                                     <i class="fas fa-folder text-blue-500 text-xl sm:text-2xl"></i>
@@ -413,7 +451,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                         ];
                                         $icon = $iconMap[$category] ?? $iconMap['other'];
                                     ?>
-                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                        <div class="file-card bg-white rounded-xl border border-slate-200 p-3 sm:p-4 cursor-pointer group relative" draggable="true" ondragstart="event.dataTransfer.setData('application/x-file-id', '<?= encodeId($file['id']) ?>')" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                                             <div class="text-center">
                                                 <?php if ($category === 'image'): ?>
                                                     <div class="w-full h-20 sm:h-24 rounded-lg mb-2 sm:mb-3 overflow-hidden bg-slate-100">
@@ -453,7 +491,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                     </thead>
                                     <tbody>
                                         <?php foreach ($folders as $folder): ?>
-                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="window.location='dashboard.php?folder=<?= encodeId($folder['id']) ?>'">
+                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="navigateTo('dashboard.php?folder=<?= encodeId($folder['id']) ?>')" ondragover="event.preventDefault(); this.classList.add('bg-blue-100')" ondragleave="this.classList.remove('bg-blue-100')" ondrop="event.preventDefault(); this.classList.remove('bg-blue-100'); handleFileDrop(event, '<?= encodeId($folder['id']) ?>')">
                                                 <td class="px-4 py-3">
                                                     <div class="flex items-center gap-3">
                                                         <div class="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -484,7 +522,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                                             ];
                                             $icon = $iconMap[$category] ?? $iconMap['other'];
                                         ?>
-                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
+                                            <tr class="border-b border-slate-100 hover:bg-blue-50/50 cursor-pointer transition-colors" draggable="true" ondragstart="event.dataTransfer.setData('application/x-file-id', '<?= encodeId($file['id']) ?>')" onclick="previewFile('<?= encodeId($file['id']) ?>', '<?= htmlspecialchars($file['original_name'], ENT_QUOTES) ?>', '<?= $file['type'] ?>', '<?= urlEncodePath($file['path']) ?>')">
                                                 <td class="px-4 py-3">
                                                     <div class="flex items-center gap-3">
                                                         <div class="w-9 h-9 <?= $icon[2] ?> rounded-lg flex items-center justify-center flex-shrink-0">
@@ -643,6 +681,14 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
 
         let activeXHRs = [];
 
+        // Peringatan saat refresh/tutup tab jika ada upload berjalan
+        window.addEventListener('beforeunload', function (e) {
+            if (activeXHRs.length > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
         function handleFileSelect(files) {
             for (let i = 0; i < files.length; i++) {
                 uploadFile(files[i]);
@@ -682,6 +728,44 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
         function preventDefaults(e) {
             e.preventDefault();
             e.stopPropagation();
+        }
+
+        function handleFileDrop(e, targetFolderId) {
+            e.stopPropagation();
+            const fileId = e.dataTransfer.getData('application/x-file-id');
+            if (fileId) {
+                moveFile(fileId, targetFolderId);
+            } else if (e.dataTransfer.files.length) {
+                const originalFolderId = currentFolderId;
+                currentFolderId = targetFolderId;
+                handleFileSelect(e.dataTransfer.files);
+                currentFolderId = originalFolderId;
+            }
+            const dropZone = document.getElementById('dropZone');
+            dropZone.classList.add('hidden');
+            dropZone.classList.remove('drag-over');
+        }
+
+        function moveFile(fileId, targetFolderId) {
+            const formData = new FormData();
+            formData.append('type', 'file');
+            formData.append('id', fileId);
+            formData.append('target_folder_id', targetFolderId);
+
+            fetch('move.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    showToast(res.message, 'success');
+                    reloadFiles();
+                } else {
+                    showToast(res.message, 'error');
+                }
+            })
+            .catch(() => showToast('Terjadi kesalahan', 'error'));
         }
 
         // File Upload
@@ -864,7 +948,7 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
             document.getElementById('contextMenu').classList.add('hidden');
 
             if (action === 'open' && ctxType === 'folder') {
-                window.location = 'dashboard.php?folder=' + ctxId;
+                navigateTo('dashboard.php?folder=' + ctxId);
             } else if (action === 'download' && ctxType === 'file') {
                 const a = document.createElement('a');
                 a.href = BASE_URL + '/download.php?id=' + ctxId;
@@ -1006,29 +1090,77 @@ $totalSize = $db->query("SELECT COALESCE(SUM(size), 0) FROM files")->fetchColumn
                 });
         }
 
-        // AJAX Reload
-        function reloadFiles() {
+        // AJAX Navigate
+        function navigateTo(url, pushState = true) {
             const loader = document.getElementById('filesLoader');
             if (loader) {
                 loader.classList.remove('opacity-0', 'pointer-events-none');
                 loader.classList.add('opacity-100');
             }
 
-            fetch(window.location.href)
+            fetch(url)
                 .then(r => r.text())
                 .then(html => {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
+                    
+                    // Update Title
+                    document.title = doc.title;
+
+                    // Update Items
                     const newContainer = doc.getElementById('itemsContainer');
                     if (newContainer) {
                         document.getElementById('itemsContainer').innerHTML = newContainer.innerHTML;
                         setView(currentView); // Tetap di mode terakhir (Grid/List)
                     }
+                    
+                    // Update Breadcrumbs
+                    const newBreadcrumbs = doc.getElementById('breadcrumbNav');
+                    const oldBreadcrumbs = document.getElementById('breadcrumbNav');
+                    if (newBreadcrumbs && oldBreadcrumbs) {
+                        oldBreadcrumbs.innerHTML = newBreadcrumbs.innerHTML;
+                    }
+                    
+                    // Update Search Forms
+                    const newForms = doc.querySelectorAll('form[action="dashboard.php"]');
+                    const oldForms = document.querySelectorAll('form[action="dashboard.php"]');
+                    oldForms.forEach((form, i) => {
+                        if (newForms[i]) form.innerHTML = newForms[i].innerHTML;
+                    });
+
+                    // Update currentFolderId
+                    const scriptTags = doc.querySelectorAll('script');
+                    for (let script of scriptTags) {
+                        const match = script.textContent.match(/let currentFolderId = '(.*?)';/);
+                        if (match) {
+                            currentFolderId = match[1];
+                            break;
+                        }
+                    }
+
+                    // Push state
+                    const absoluteUrl = new URL(url, window.location.href).href;
+                    if (pushState && window.location.href !== absoluteUrl) {
+                        history.pushState({url: absoluteUrl}, '', absoluteUrl);
+                    }
                 })
                 .catch(err => {
                     console.error('AJAX Error:', err);
-                    location.reload(); // Fallback jika gagal
+                    location.href = url; // Fallback
                 });
+        }
+
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.url) {
+                navigateTo(e.state.url, false);
+            } else {
+                navigateTo(location.href, false);
+            }
+        });
+
+        // AJAX Reload
+        function reloadFiles() {
+            navigateTo(window.location.href, false);
         }
 
         // Toast
